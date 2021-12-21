@@ -1,3 +1,5 @@
+use crate::utils::parse_asn;
+
 use super::schema::*;
 use super::tables::*;
 use diesel::pg::PgConnection;
@@ -12,19 +14,6 @@ pub fn establish_connection() -> PgConnection {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     PgConnection::establish(&database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
-}
-
-pub fn prefixes_for_origin(conn: &PgConnection, origin: i64) -> Vec<IpNetwork> {
-    let rpsl_objs = rpsl_objects::table
-        // .select((rpsl_objects::prefix, rpsl_objects::asn_first, rpsl_objects::source))
-        .filter(rpsl_objects::asn_first.eq(origin))
-        .filter(rpsl_objects::object_class.eq_any(["route", "route6"]))
-        .load::<RpslObject>(conn)
-        .expect("Error loading prefixes");
-    rpsl_objs
-        .into_iter()
-        .flat_map(|rpsl_obj| rpsl_obj.prefix)
-        .collect()
 }
 
 pub fn prefixes_for_origins(conn: &PgConnection, origins: &[i64]) -> Vec<IpNetwork> {
@@ -58,4 +47,32 @@ pub fn members_for_as_set(conn: &PgConnection, set_name: &str) -> Vec<String> {
                 .collect::<Vec<String>>()
         })
         .collect()
+}
+
+pub fn members_for_as_set_recursive(connection: &PgConnection, set_name: &str) -> Vec<i64> {
+    let mut already_resolved: Vec<String> = vec![];
+    members_for_as_set_recursive_internal(connection, set_name, &mut already_resolved)
+}
+
+fn members_for_as_set_recursive_internal(
+    connection: &PgConnection,
+    set_name: &str,
+    already_resolved: &mut Vec<String>,
+) -> Vec<i64> {
+    let mut result = vec![];
+    let members = members_for_as_set(connection, set_name);
+    // println!("resolved {} to members {:?}", set_name, members);
+    for member in &members {
+        if already_resolved.contains(member) {
+            return result;
+        }
+        already_resolved.push(member.clone());
+        let mut submembers: Vec<i64> = match parse_asn(member) {
+            Ok(asn) => vec![asn],
+            Err(_e) => members_for_as_set_recursive_internal(connection, member, already_resolved),
+        };
+        result.append(&mut submembers);
+    }
+    println!("resolved {} to vec {:?}", set_name, result);
+    result
 }
