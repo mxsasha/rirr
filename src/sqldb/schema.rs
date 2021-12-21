@@ -59,8 +59,4 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(
-    database_status,
-    roa_object,
-    rpsl_objects,
-);
+allow_tables_to_appear_in_same_query!(database_status, roa_object, rpsl_objects,);

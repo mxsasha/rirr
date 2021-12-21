@@ -1,72 +1,54 @@
-mod tables;
-mod enums;
-
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
 
-use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use dotenv::dotenv;
-use enums::{ScopeFilterStatus, RPKIStatus};
-use std::env;
+use ipnetwork::IpNetwork;
+use sqldb::handler::*;
 
-#[derive(Queryable, Debug)]
-pub struct Roa {
-    pub pk: uuid::Uuid,
-    pub prefix: ipnetwork::IpNetwork,
-    pub asn: i64,
-    pub max_length: i32,
-    pub trust_anchor: Option<String>,
-    pub ip_version: i32,
-    pub created: diesel::data_types::PgTimestamp,
-}
+use crate::utils::parse_asn;
 
-#[derive(Queryable, Debug)]
-pub struct RpslObjects {
-    pub pk: uuid::Uuid,
-    pub rpsl_pk: String,
-    pub source: String,
-    pub object_class: String,
-    pub parsed_data: serde_json::Value,
-    pub object_text: String,
-    pub ip_version: Option<i32>,
-    pub ip_first: Option<ipnetwork::IpNetwork>,
-    pub ip_last: Option<ipnetwork::IpNetwork>,
-    pub ip_size: Option<bigdecimal::BigDecimal>,
-    pub asn_first: Option<i64>,
-    pub asn_last: Option<i64>,
-    pub created: diesel::data_types::PgTimestamp,
-    pub updated: diesel::data_types::PgTimestamp,
-    pub rpki_status: RPKIStatus,
-    pub prefix_length: Option<i32>,
-    pub scopefilter_status: ScopeFilterStatus,
-    pub prefix: Option<ipnetwork::IpNetwork>,
-}
-
-#[derive(Queryable, Debug)]
-pub struct RpslObjectsNarrow {
-    pub prefix: Option<ipnetwork::IpNetwork>,
-    pub asn_first: Option<i64>,
-    pub source: String,
-}
+mod enums;
+mod sqldb;
+mod utils;
 
 fn main() {
-    use crate::tables::*;
-
     let connection = establish_connection();
-    let results = rpsl_objects::table
-        // .select((rpsl_objects::prefix, rpsl_objects::asn_first, rpsl_objects::source))
-        // .filter(rpsl_objects::source.eq("NTTCOM"))
-        .limit(50)
-        .load::<RpslObjects>(&connection)
-        .expect("Error loading posts");
-    println!("{:?}", results);
+    // let members = members_for_as_set(&connection, "AS-DASHCARE");
+    // for member in &members {
+    //     let Vec<i64> = match parse_asn(member) {
+    //         Ok(asn) => vec![asn],
+    //         Err(_e) => 2,
+    //     };
+    // }
+    let mut already_resolved: Vec<String> = vec![];
+    let members = resolve(&connection, "AS-TELIANET", &mut already_resolved);
+    // let masns: Vec<i64> = members.iter().map(|m| parse_asn(m)).flatten().collect();
+    let prefixes: Vec<IpNetwork> = prefixes_for_origins(&connection, &members);
+    // println!("{:?}", prefixes);
+    println!("{:?}", prefixes);
+    println!("{:?}", members);
+    // println!("{:?}", masns);
 }
 
-pub fn establish_connection() -> PgConnection {
-    dotenv().ok();
-
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    PgConnection::establish(&database_url).unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+fn resolve(
+    connection: &diesel::PgConnection,
+    set_name: &str,
+    already_resolved: &mut Vec<String>,
+) -> Vec<i64> {
+    let mut result = vec![];
+    let members = members_for_as_set(connection, set_name);
+    // println!("resolved {} to members {:?}", set_name, members);
+    for member in &members {
+        if already_resolved.contains(member) {
+            return result;
+        }
+        already_resolved.push(member.clone());
+        let mut submembers: Vec<i64> = match parse_asn(member) {
+            Ok(asn) => vec![asn],
+            Err(_e) => resolve(connection, member, already_resolved),
+        };
+        result.append(&mut submembers);
+    }
+    println!("resolved {} to vec {:?}", set_name, result);
+    result
 }
