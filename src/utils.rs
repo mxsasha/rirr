@@ -1,5 +1,6 @@
 use std::num::ParseIntError;
 
 pub fn parse_asn(input: &str) -> Result<i64, ParseIntError> {
-    input[2..].parse()
+    let asn: u64 = input[2..].parse()?;
+    Ok(asn as i64)
 }
