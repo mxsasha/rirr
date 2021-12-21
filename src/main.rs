@@ -25,6 +25,11 @@ fn handle_client(mut stream: TcpStream) {
             buf = String::new();
             continue;
         }
+        if buf.trim().starts_with("!n") {
+            stream.write(b"C\n");
+            buf = String::new();
+            continue;
+        }
         if buf.trim() == "!a" {
             stream.write(b"F Missing required set name for A query\n");
             buf = String::new();
