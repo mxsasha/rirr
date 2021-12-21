@@ -1,10 +1,6 @@
 table! {
-    alembic_version (version_num) {
-        version_num -> Varchar,
-    }
-}
+    use diesel::sql_types::*;
 
-table! {
     database_status (pk) {
         pk -> Uuid,
         source -> Varchar,
@@ -24,6 +20,8 @@ table! {
 }
 
 table! {
+    use diesel::sql_types::*;
+
     roa_object (pk) {
         pk -> Uuid,
         prefix -> Cidr,
@@ -36,27 +34,16 @@ table! {
 }
 
 table! {
-    rpsl_database_journal (pk) {
-        pk -> Uuid,
-        rpsl_pk -> Varchar,
-        source -> Varchar,
-        serial_nrtm -> Int4,
-        operation -> Varchar,
-        object_class -> Varchar,
-        object_text -> Text,
-        timestamp -> Timestamptz,
-        origin -> Varchar,
-    }
-}
+    use diesel::sql_types::*;
+    use crate::enums::*;
 
-table! {
     rpsl_objects (pk) {
         pk -> Uuid,
         rpsl_pk -> Varchar,
         source -> Varchar,
         object_class -> Varchar,
         parsed_data -> Jsonb,
-        // object_text -> Text,
+        object_text -> Text,
         ip_version -> Nullable<Int4>,
         ip_first -> Nullable<Inet>,
         ip_last -> Nullable<Inet>,
@@ -65,32 +52,15 @@ table! {
         asn_last -> Nullable<Int8>,
         created -> Timestamptz,
         updated -> Timestamptz,
-        rpki_status -> Varchar,
+        rpki_status -> Rpkistatus,
         prefix_length -> Nullable<Int4>,
-        scopefilter_status -> Varchar,
+        scopefilter_status -> Scopefilterstatus,
         prefix -> Nullable<Cidr>,
     }
 }
 
-table! {
-    rpsl_objects_suspended (pk) {
-        pk -> Uuid,
-        rpsl_pk -> Varchar,
-        source -> Varchar,
-        object_class -> Varchar,
-        object_text -> Text,
-        mntners -> Array<Text>,
-        timestamp -> Timestamptz,
-        original_created -> Timestamptz,
-        original_updated -> Timestamptz,
-    }
-}
-
 allow_tables_to_appear_in_same_query!(
-    alembic_version,
     database_status,
     roa_object,
-    rpsl_database_journal,
     rpsl_objects,
-    rpsl_objects_suspended,
 );

@@ -1,0 +1,3 @@
+[print_schema]
+import_types = ["diesel::sql_types::*", "crate::enums::*"]
+filter = {only_tables = ["rpsl_objects", "database_status", "roa_object"]}
