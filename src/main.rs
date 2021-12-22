@@ -4,6 +4,7 @@ extern crate dotenv;
 
 use ipnetwork::IpNetwork;
 use sqldb::handler::*;
+use std::collections::HashMap;
 use std::io::BufRead;
 use std::{
     io::{BufReader, Write},
@@ -14,7 +15,7 @@ mod enums;
 mod sqldb;
 mod utils;
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(mut stream: TcpStream, prefix_store: &HashMap<i64, Vec<IpNetwork>>) {
     let connection = establish_connection();
     let mut buf = String::new();
     let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -40,7 +41,7 @@ fn handle_client(mut stream: TcpStream) {
         }
         let members = members_for_as_set_recursive(&connection, &buf.trim()[3..]);
         println!("{:?}", members);
-        let prefixes: Vec<IpNetwork> = prefixes_for_origins(&connection, &members);
+        let prefixes: Vec<IpNetwork> = prefixes_for_origins(&connection, &members, prefix_store);
         let response = prefixes
             .iter()
             .map(|p| p.to_string())
@@ -55,11 +56,16 @@ fn handle_client(mut stream: TcpStream) {
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:4343")?;
+    println!("building store");
+    let connection = establish_connection();
+    let prefix_store = create_prefix_store(&connection);
+    println!("done building store");
+
 
     // accept connections and process them serially
     for stream in listener.incoming() {
         println!("New client: {:?}", stream);
-        handle_client(stream?);
+        handle_client(stream?, &prefix_store);
     }
     Ok(())
 }

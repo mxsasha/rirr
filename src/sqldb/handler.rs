@@ -6,6 +6,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use dotenv::dotenv;
 use ipnetwork::IpNetwork;
+use std::collections::HashMap;
 use std::env;
 
 pub fn establish_connection() -> PgConnection {
@@ -16,17 +17,32 @@ pub fn establish_connection() -> PgConnection {
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
 
-pub fn prefixes_for_origins(conn: &PgConnection, origins: &[i64]) -> Vec<IpNetwork> {
+pub fn create_prefix_store(conn: &PgConnection) -> HashMap<i64, Vec<IpNetwork>> {
     let rpsl_objs = rpsl_objects::table
-        // .select((rpsl_objects::prefix, rpsl_objects::asn_first, rpsl_objects::source))
-        .filter(rpsl_objects::asn_first.eq_any(origins))
+        .select((rpsl_objects::source, rpsl_objects::asn_first, rpsl_objects::prefix))
         .filter(rpsl_objects::object_class.eq_any(["route", "route6"]))
-        .load::<RpslObject>(conn)
+        .load::<RpslObjectRoute>(conn)
         .expect("Error loading prefixes");
-    rpsl_objs
-        .into_iter()
-        .flat_map(|rpsl_obj| rpsl_obj.prefix)
-        .collect()
+
+    let mut result: HashMap<i64, Vec<IpNetwork>> = HashMap::new();
+    for rpsl_obj in rpsl_objs.into_iter() {
+        result.entry(rpsl_obj.asn_first.unwrap()).or_default().push(rpsl_obj.prefix.unwrap());
+    }
+    result
+}
+
+pub fn prefixes_for_origins(conn: &PgConnection, origins: &[i64], prefix_store: &HashMap<i64, Vec<IpNetwork>>) -> Vec<IpNetwork> {
+    origins.iter().flat_map(|asn| prefix_store.get(asn)).flatten().cloned().collect()
+    // let rpsl_objs = rpsl_objects::table
+    //     // .select((rpsl_objects::prefix, rpsl_objects::asn_first, rpsl_objects::source))
+    //     .filter(rpsl_objects::asn_first.eq_any(origins))
+    //     .filter(rpsl_objects::object_class.eq_any(["route", "route6"]))
+    //     .load::<RpslObject>(conn)
+    //     .expect("Error loading prefixes");
+    // rpsl_objs
+    //     .into_iter()
+    //     .flat_map(|rpsl_obj| rpsl_obj.prefix)
+    //     .collect()
 }
 
 pub fn members_for_as_set(conn: &PgConnection, set_name: &str) -> Vec<String> {

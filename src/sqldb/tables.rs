@@ -32,3 +32,10 @@ pub struct RpslObject {
     pub scopefilter_status: ScopeFilterStatus,
     pub prefix: Option<ipnetwork::IpNetwork>,
 }
+
+#[derive(Queryable, Debug)]
+pub struct RpslObjectRoute {
+    pub source: String,
+    pub asn_first: Option<i64>,
+    pub prefix: Option<ipnetwork::IpNetwork>,
+}
