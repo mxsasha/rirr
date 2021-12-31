@@ -1,13 +1,26 @@
 use crate::utils::parse_asn;
 
+use super::operators::PqCidrExtensionMethods;
 use super::schema::*;
-use super::tables::*;
+use crate::models::*;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use dotenv::dotenv;
 use ipnetwork::IpNetwork;
 use std::collections::HashMap;
 use std::env;
+use std::str::FromStr;
+
+pub type PgPool = Pool<ConnectionManager<PgConnection>>;
+
+pub fn create_pool() -> PgPool {
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let manager = ConnectionManager::new(database_url);
+    Pool::new(manager).unwrap()
+}
 
 pub fn establish_connection() -> PgConnection {
     dotenv().ok();
@@ -19,30 +32,43 @@ pub fn establish_connection() -> PgConnection {
 
 pub fn create_prefix_store(conn: &PgConnection) -> HashMap<i64, Vec<IpNetwork>> {
     let rpsl_objs = rpsl_objects::table
-        .select((rpsl_objects::source, rpsl_objects::asn_first, rpsl_objects::prefix))
+        .select((
+            rpsl_objects::source,
+            rpsl_objects::asn_first,
+            rpsl_objects::prefix,
+        ))
         .filter(rpsl_objects::object_class.eq_any(["route", "route6"]))
         .load::<RpslObjectRoute>(conn)
         .expect("Error loading prefixes");
 
     let mut result: HashMap<i64, Vec<IpNetwork>> = HashMap::new();
     for rpsl_obj in rpsl_objs.into_iter() {
-        result.entry(rpsl_obj.asn_first.unwrap()).or_default().push(rpsl_obj.prefix.unwrap());
+        result
+            .entry(rpsl_obj.asn_first.unwrap())
+            .or_default()
+            .push(rpsl_obj.prefix.unwrap());
     }
     result
 }
 
-pub fn prefixes_for_origins(conn: &PgConnection, origins: &[i64], prefix_store: &HashMap<i64, Vec<IpNetwork>>) -> Vec<IpNetwork> {
-    origins.iter().flat_map(|asn| prefix_store.get(asn)).flatten().cloned().collect()
-    // let rpsl_objs = rpsl_objects::table
-    //     // .select((rpsl_objects::prefix, rpsl_objects::asn_first, rpsl_objects::source))
-    //     .filter(rpsl_objects::asn_first.eq_any(origins))
-    //     .filter(rpsl_objects::object_class.eq_any(["route", "route6"]))
-    //     .load::<RpslObject>(conn)
-    //     .expect("Error loading prefixes");
-    // rpsl_objs
-    //     .into_iter()
-    //     .flat_map(|rpsl_obj| rpsl_obj.prefix)
-    //     .collect()
+pub fn query_for_ip_more_specific(conn: &PgConnection, prefix: &str) -> Vec<RpslObject> {
+    let net = IpNetwork::from_str(prefix).unwrap();
+    rpsl_objects::table
+        .filter(rpsl_objects::prefix.is_contained_by_or_equals(&net))
+        .load::<RpslObject>(conn)
+        .expect("Error loading objects")
+}
+
+pub fn prefixes_for_origins(
+    origins: &[i64],
+    prefix_store: &HashMap<i64, Vec<IpNetwork>>,
+) -> Vec<IpNetwork> {
+    origins
+        .iter()
+        .flat_map(|asn| prefix_store.get(asn))
+        .flatten()
+        .cloned()
+        .collect()
 }
 
 pub fn members_for_as_set(conn: &PgConnection, set_name: &str) -> Vec<String> {

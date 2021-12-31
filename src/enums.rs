@@ -1,4 +1,4 @@
-#[derive(diesel_derive_enum::DbEnum, Debug)]
+#[derive(async_graphql::Enum, diesel_derive_enum::DbEnum, Debug, Copy, Clone, PartialEq, Eq)]
 #[DieselType = "Scopefilterstatus"]
 pub enum ScopeFilterStatus {
     InScope,
@@ -6,7 +6,7 @@ pub enum ScopeFilterStatus {
     OutOfScopePrefix,
 }
 
-#[derive(diesel_derive_enum::DbEnum, Debug)]
+#[derive(async_graphql::Enum, diesel_derive_enum::DbEnum, Debug, Copy, Clone, PartialEq, Eq)]
 #[DieselType = "Rpkistatus"]
 pub enum RPKIStatus {
     Valid,
